@@ -6,7 +6,7 @@ client = TestClient(app)
 def test_read_main():
     response = client.get("/")
     assert response.status_code == 200
-    assert "Traffic AI Analysis" in response.text
+    assert "MLOps Traffic Engine" in response.text
 
 def test_predict_endpoint_invalid_hour():
     # Hour must be between 0 and 23
