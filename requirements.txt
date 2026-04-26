@@ -1,0 +1,14 @@
+scikit-learn
+pandas
+mlflow
+fastapi
+uvicorn
+numpy
+pytest
+scipy
+schedule
+httpx
+optuna
+shap
+matplotlib
+psutil

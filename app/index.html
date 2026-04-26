@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLOps Traffic Engine | Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #09090b;
+            --panel-bg: rgba(24, 24, 27, 0.8);
+            --border: #27272a;
+            --accent-1: #3b82f6; /* Blue */
+            --accent-2: #8b5cf6; /* Purple */
+            --success: #10b981;
+            --text-main: #f8fafc;
+            --text-muted: #a1a1aa;
+            --font-main: 'Inter', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.15), transparent 25%);
+        }
+
+        .navbar {
+            padding: 20px 40px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(9, 9, 11, 0.9);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        .navbar h1 {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(to right, var(--accent-1), var(--accent-2));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%; background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes flashWarning {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            grid-template-rows: auto 1fr;
+            gap: 24px;
+            padding: 30px 40px;
+            flex: 1;
+        }
+
+        /* Top Stats Row */
+        .stats-row {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+        }
+
+        .stat-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%;
+            background: linear-gradient(to bottom, var(--accent-1), var(--accent-2));
+        }
+
+        .stat-title { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+        .stat-value { font-size: 28px; font-weight: 700; font-family: var(--font-mono); }
+
+        /* Left Panel - Controls */
+        .control-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .control-panel h2 { font-size: 18px; font-weight: 600; margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+
+        .form-group label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+        .form-control {
+            width: 100%; padding: 12px 16px; background: rgba(0,0,0,0.5); border: 1px solid var(--border);
+            border-radius: 8px; color: white; font-family: var(--font-mono); font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        .form-control:focus { outline: none; border-color: var(--accent-1); }
+
+        .btn-run {
+            width: 100%; padding: 16px; background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+            border: none; border-radius: 8px; color: white; font-weight: 600; font-size: 16px;
+            cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+        .btn-run:hover { transform: translateY(-2px); box-shadow: 0 10px 20px -10px var(--accent-1); }
+
+        /* Right Panel - Analytics */
+        .analytics-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .anomaly-alert {
+            display: none;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid #ef4444;
+            border-left: 4px solid #ef4444;
+            padding: 15px;
+            border-radius: 8px;
+            color: #ef4444;
+            font-weight: 600;
+            font-size: 14px;
+            animation: flashWarning 2s infinite;
+        }
+
+        .result-hero {
+            background: linear-gradient(145deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-label { font-size: 16px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 2px; }
+        .hero-value { font-size: 72px; font-weight: 800; background: linear-gradient(to right, #34d399, #10b981); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 10px 0; font-family: var(--font-mono); }
+        
+        .shap-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            width: 100%;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid var(--border);
+        }
+
+        .shap-item {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .shap-label { font-size: 12px; color: var(--text-muted); margin-bottom: 5px; }
+        .shap-val { font-size: 18px; font-weight: 600; font-family: var(--font-mono); }
+        .shap-positive { color: #ef4444; }
+        .shap-negative { color: #34d399; }
+
+        .insight-box {
+            margin-top: 25px;
+            padding: 16px 20px;
+            background: rgba(139, 92, 246, 0.15);
+            border-left: 4px solid var(--accent-2);
+            border-radius: 6px;
+            font-size: 14px;
+            color: #e2e8f0;
+            text-align: left;
+            line-height: 1.6;
+            width: 100%;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .insight-box strong { color: var(--accent-2); margin-right: 5px; }
+
+        .terminal-panel {
+            background: #000;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: #34d399;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            grid-column: 1 / -1;
+            height: 180px;
+        }
+        .terminal-header { background: #111; padding: 5px 10px; border-bottom: 1px solid #333; color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px;}
+        .terminal-body { padding: 10px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+        .terminal-line { animation: typeIn 0.2s ease-out; }
+        @keyframes typeIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
+
+        .congestion-badge {
+            margin-top: 15px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            display: inline-block;
+        }
+
+        .presets-row { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap;}
+        .btn-preset { background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text-muted); padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: 0.2s; font-family: var(--font-mono);}
+        .btn-preset:hover { background: rgba(255,255,255,0.1); color: white; border-color: var(--accent-1); }
+
+        .confidence-wrapper { width: 100%; max-width: 300px; margin-top: 20px; }
+        .conf-header { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px;}
+        .conf-bar-bg { width: 100%; height: 6px; background: rgba(0,0,0,0.5); border-radius: 3px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1);}
+        .conf-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #f59e0b, #10b981); transition: width 1s ease-out; }
+
+        .btn-export { background: rgba(59, 130, 246, 0.1); border: 1px solid var(--accent-1); color: var(--accent-1); padding: 10px 16px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600; display: none; margin-top: 15px; width: 100%; text-transform: uppercase; transition: 0.2s;}
+        .btn-export:hover { background: var(--accent-1); color: white; }
+
+        .chart-container {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            flex: 1;
+            min-height: 300px;
+        }
+
+        /* Scanning Line Animation */
+        .scanner {
+            position: absolute; width: 100%; height: 2px; background: rgba(59, 130, 246, 0.5);
+            box-shadow: 0 0 10px var(--accent-1); top: 0; left: 0; z-index: 10;
+            animation: scan 3s linear infinite; display: none;
+        }
+        @keyframes scan { 0% { top: 0; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <div>
+            <h1>MLOps Traffic Engine</h1>
+            <div style="font-size: 12px; color: var(--text-muted); letter-spacing: 1px; margin-top: 6px; font-weight: 600;">
+                ENGINEERED BY <span style="color: var(--accent-2);">MOHAK MISHRA</span>
+            </div>
+        </div>
+        <div class="status-badge">
+            <div class="status-dot"></div>
+            SYSTEM ONLINE
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Top Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-title">Model Version</div>
+                <div class="stat-value">v2.1.0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Algorithm</div>
+                <div class="stat-value" style="font-size: 16px; line-height: 24px; padding-top: 5px;">
+                    RandomForest Regressor <br>
+                    <span style="font-size: 11px; color: var(--accent-2); font-weight: 600;">+ IsolationForest Guard</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Data Drift Status</div>
+                <div class="stat-value" style="color: var(--success)">STABLE</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">API Latency</div>
+                <div class="stat-value" id="latencyDisplay">-- ms</div>
+            </div>
+        </div>
+
+        <!-- Left Controls -->
+        <div class="control-panel">
+            <h2>Simulation Parameters</h2>
+            <div class="presets-row">
+                <button type="button" class="btn-preset" onclick="applyPreset(18, 295, 0)">[Rush Hour]</button>
+                <button type="button" class="btn-preset" onclick="applyPreset(3, 280, 0)">[Midnight Empty]</button>
+                <button type="button" class="btn-preset" onclick="applyPreset(14, 305, 50)">[Heavy Storm]</button>
+            </div>
+            <form id="predictForm">
+                <div class="form-group">
+                    <label>Hour of Day (0-23)</label>
+                    <input type="number" id="hour" class="form-control" value="17" min="0" max="23" required>
+                </div>
+                <div class="form-group">
+                    <label>Temperature (Kelvin/Celsius)</label>
+                    <input type="number" step="0.1" id="temperature" class="form-control" value="290.5" required>
+                </div>
+                <div class="form-group">
+                    <label>Rainfall (mm)</label>
+                    <input type="number" step="0.1" id="rain" class="form-control" value="0.0" required>
+                </div>
+                <button type="submit" class="btn-run" id="runBtn">EXECUTE INFERENCE</button>
+            </form>
+        </div>
+
+        <!-- Right Analytics -->
+        <div class="analytics-panel">
+            <div class="anomaly-alert" id="anomalyWarning">
+                ⚠️ WARNING: Input parameters are statistical anomalies. Model confidence is severely degraded.
+            </div>
+
+            <div class="result-hero" id="heroCard">
+                <div class="scanner" id="scanner"></div>
+                <div class="hero-label">Real-time Predicted Traffic Volume</div>
+                <div class="hero-value" id="mainResult">----</div>
+                <div class="hero-label" style="font-size: 12px;">Vehicles per hour</div>
+                <div class="congestion-badge" id="congestionBadge" style="display:none;"></div>
+                
+                <div class="confidence-wrapper" id="confWrapper" style="opacity: 0; transition: opacity 0.5s;">
+                    <div class="conf-header"><span>Model Confidence</span><span id="confText" style="color: white; font-weight: 700;">--%</span></div>
+                    <div class="conf-bar-bg"><div class="conf-bar-fill" id="confFill"></div></div>
+                </div>
+
+                <div class="shap-grid" id="shapGrid" style="opacity: 0; transition: opacity 0.5s;">
+                    <div class="shap-item">
+                        <div class="shap-label">Time Impact (SHAP)</div>
+                        <div class="shap-val" id="shapHour">--</div>
+                    </div>
+                    <div class="shap-item">
+                        <div class="shap-label">Weather Impact (SHAP)</div>
+                        <div class="shap-val" id="shapTemp">--</div>
+                    </div>
+                    <div class="shap-item">
+                        <div class="shap-label">Base Historic Average</div>
+                        <div class="shap-val" id="shapBase" style="color: var(--text-main)">--</div>
+                    </div>
+                </div>
+
+                <div class="insight-box" id="aiInsight">
+                    <strong>AI Insight:</strong> <span id="insightText"></span>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div style="position: relative; height: 250px; width: 100%;">
+                    <canvas id="trendChart"></canvas>
+                </div>
+                <button class="btn-export" id="btnExport" onclick="exportCSV()">⬇️ Export Forecast & Insights (CSV)</button>
+            </div>
+            
+            <div class="terminal-panel">
+                <div class="terminal-header">/// SYSTEM LOGS STREAM ///</div>
+                <div class="terminal-body" id="terminalLogs">
+                    <div class="terminal-line">> INITIALIZING MLOPS INFERENCE ENGINE...</div>
+                    <div class="terminal-line">> MODEL VERSION: v2.1.0 LOADED.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Chart.js
+        const ctx = document.getElementById('trendChart').getContext('2d');
+        Chart.defaults.color = '#a1a1aa';
+        Chart.defaults.font.family = "'JetBrains Mono', monospace";
+        
+        let trendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['+1h', '+2h', '+3h', '+4h', '+5h', '+6h', '+7h'],
+                datasets: [{
+                    label: 'Forecasted Traffic Volume',
+                    data: [0, 0, 0, 0, 0, 0, 0],
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#8b5cf6',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 5,
+                    pointHoverRadius: 7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    title: { display: true, text: 'AI FORECAST ENGINE: NEXT 7 HOURS', color: '#f8fafc', font: { size: 14, weight: 600 } }
+                },
+                scales: {
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: false },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        function logToTerminal(msg, isError=false) {
+            const term = document.getElementById('terminalLogs');
+            const div = document.createElement('div');
+            const timestamp = new Date().toISOString().split('T')[1].slice(0,12);
+            div.className = 'terminal-line';
+            div.innerHTML = `<span style="color:#888">[${timestamp}]</span> > ${msg}`;
+            if (isError) div.style.color = '#ef4444';
+            term.appendChild(div);
+            term.scrollTop = term.scrollHeight;
+        }
+
+        function applyPreset(h, t, r) {
+            document.getElementById('hour').value = h;
+            document.getElementById('temperature').value = t;
+            document.getElementById('rain').value = r;
+            logToTerminal(`Applied Scenario Preset: Hour=${h}, Temp=${t}, Rain=${r}`);
+        }
+        
+        let lastForecastData = [];
+        let currentPrediction = {};
+
+        function exportCSV() {
+            if(!currentPrediction.hour && currentPrediction.hour !== 0) return;
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Type,Hour,Temperature(K),Rainfall(mm),Predicted_Volume\n";
+            
+            // Current
+            csvContent += `Current,${currentPrediction.hour},${currentPrediction.temp},${currentPrediction.rain},${currentPrediction.vol}\n`;
+            
+            // Forecasts
+            lastForecastData.forEach((vol, idx) => {
+                let fh = (currentPrediction.hour + idx + 1) % 24;
+                csvContent += `Forecast (+${idx+1}h),${fh},${currentPrediction.temp},${currentPrediction.rain},${vol}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `mlops_forecast_${currentPrediction.hour}00.csv`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            logToTerminal(`Exported forecast data to CSV.`);
+        }
+
+        document.getElementById('predictForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const btn = document.getElementById('runBtn');
+            const scanner = document.getElementById('scanner');
+            const mainResult = document.getElementById('mainResult');
+            const shapGrid = document.getElementById('shapGrid');
+            
+            const hour = parseInt(document.getElementById('hour').value);
+            const temp = parseFloat(document.getElementById('temperature').value);
+            const rain = parseFloat(document.getElementById('rain').value);
+            
+            btn.innerText = "PROCESSING DATA...";
+            scanner.style.display = 'block';
+            mainResult.style.opacity = '0.5';
+            shapGrid.style.opacity = '0';
+            document.getElementById('aiInsight').style.opacity = '0';
+            document.getElementById('congestionBadge').style.display = 'none';
+            document.getElementById('anomalyWarning').style.display = 'none';
+            document.getElementById('confWrapper').style.opacity = '0';
+            document.getElementById('btnExport').style.display = 'none';
+
+            logToTerminal(`Received Inference Request: Hour=${hour}, Temp=${temp}, Rain=${rain}`);
+            logToTerminal(`Executing RandomForestRegressor pipeline...`);
+
+            const startTime = performance.now();
+
+            try {
+                // Main prediction
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hour: hour, temperature: temp, rain: rain })
+                });
+                
+                const data = await response.json();
+                const latency = Math.round(performance.now() - startTime);
+                document.getElementById('latencyDisplay').innerText = `${latency} ms`;
+
+                if(response.ok) {
+                    const predVol = Math.round(data.predicted_traffic_volume);
+                    mainResult.innerText = predVol.toLocaleString();
+                    
+                    const cBadge = document.getElementById('congestionBadge');
+                    cBadge.style.display = 'inline-block';
+                    if (predVol > 4500) {
+                        cBadge.innerText = "SEVERE CONGESTION";
+                        cBadge.style.background = "rgba(239, 68, 68, 0.2)";
+                        cBadge.style.color = "#ef4444";
+                        cBadge.style.border = "1px solid #ef4444";
+                    } else if (predVol > 2500) {
+                        cBadge.innerText = "MODERATE TRAFFIC";
+                        cBadge.style.background = "rgba(245, 158, 11, 0.2)";
+                        cBadge.style.color = "#f59e0b";
+                        cBadge.style.border = "1px solid #f59e0b";
+                    } else {
+                        cBadge.innerText = "FLOWING SMOOTHLY";
+                        cBadge.style.background = "rgba(16, 185, 129, 0.2)";
+                        cBadge.style.color = "#10b981";
+                        cBadge.style.border = "1px solid #10b981";
+                    }
+
+                    if(data.confidence_score) {
+                        document.getElementById('confText').innerText = data.confidence_score.toFixed(1) + '%';
+                        document.getElementById('confFill').style.width = data.confidence_score + '%';
+                        
+                        if(data.confidence_score < 60) {
+                            document.getElementById('confFill').style.background = '#ef4444';
+                        } else if(data.confidence_score < 85) {
+                            document.getElementById('confFill').style.background = '#f59e0b';
+                        } else {
+                            document.getElementById('confFill').style.background = 'linear-gradient(90deg, #f59e0b, #10b981)';
+                        }
+                    }
+
+                    // Save for CSV Export
+                    currentPrediction = { hour: hour, temp: temp, rain: rain, vol: predVol };
+
+                    logToTerminal(`Prediction Output: ${predVol} vehicles/hour`, false);
+                    logToTerminal(`Extracting SHAP values from TreeExplainer...`, false);
+                    
+                    if(data.explanation) {
+                        const h_shap = data.explanation.hour_contribution;
+                        const t_shap = data.explanation.temperature_contribution + data.explanation.rain_contribution;
+                        
+                        document.getElementById('shapHour').innerText = (h_shap > 0 ? '+' : '') + Math.round(h_shap);
+                        document.getElementById('shapHour').className = 'shap-val ' + (h_shap > 0 ? 'shap-positive' : 'shap-negative');
+                        
+                        document.getElementById('shapTemp').innerText = (t_shap > 0 ? '+' : '') + Math.round(t_shap);
+                        document.getElementById('shapTemp').className = 'shap-val ' + (t_shap > 0 ? 'shap-positive' : 'shap-negative');
+                        
+                        document.getElementById('shapBase').innerText = Math.round(data.explanation.base_value);
+                        
+                        // Generate Natural Language Insight
+                        let insight = "";
+                        if (h_shap < -40) {
+                            insight += `At ${hour}:00, traffic is significantly lower than average because it is an off-peak or late-night hour. `;
+                        } else if (h_shap > 40) {
+                            insight += `Traffic is surging because ${hour}:00 is a busy rush-hour or peak commuting time. `;
+                        } else {
+                            insight += `The time of day (${hour}:00) is having a normal, moderate effect on traffic. `;
+                        }
+
+                        if (rain > 0) {
+                            insight += `The presence of rain (${rain}mm) is actively altering driving conditions. `;
+                        } else if (t_shap > 20) {
+                            insight += `Clear temperatures are encouraging slightly more vehicles on the road.`;
+                        } else if (t_shap < -20) {
+                            insight += `Extreme temperatures are keeping some drivers off the road.`;
+                        } else {
+                            insight += `Weather conditions are relatively normal.`;
+                        }
+                        
+                        document.getElementById('insightText').innerText = insight;
+                        document.getElementById('aiInsight').style.display = 'block';
+                    }
+
+                    if (data.is_anomaly) {
+                        document.getElementById('anomalyWarning').style.display = 'block';
+                        logToTerminal(`⚠️ OUT-OF-DISTRIBUTION DATA DETECTED. Anomaly Engine Triggered!`, true);
+                    }
+                    
+                    // Simulate Trend Chart Data by making background API calls for the next 7 hours
+                    generateTrend(hour, temp, rain);
+                    
+                } else {
+                    mainResult.innerText = "ERROR";
+                }
+            } catch(e) {
+                mainResult.innerText = "FAILED";
+                console.error(e);
+            }
+
+            setTimeout(() => {
+                btn.innerText = "EXECUTE INFERENCE";
+                scanner.style.display = 'none';
+                mainResult.style.opacity = '1';
+                shapGrid.style.opacity = '1';
+                document.getElementById('aiInsight').style.opacity = '1';
+                document.getElementById('confWrapper').style.opacity = '1';
+            }, 600);
+        });
+
+        async function generateTrend(baseHour, temp, rain) {
+            let promises = [];
+            let labels = [];
+            for(let i=1; i<=7; i++) {
+                let futureHour = (baseHour + i) % 24;
+                labels.push(`${futureHour}:00`);
+                promises.push(
+                    fetch('/predict', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ hour: futureHour, temperature: temp, rain: rain })
+                    }).then(res => res.json())
+                );
+            }
+            
+            try {
+                let results = await Promise.all(promises);
+                let trendData = results.map(r => Math.round(r.predicted_traffic_volume));
+                lastForecastData = trendData;
+                
+                trendChart.data.labels = labels;
+                trendChart.data.datasets[0].data = trendData;
+                trendChart.update();
+                
+                document.getElementById('btnExport').style.display = 'block';
+            } catch(e) {
+                console.error("Trend generation failed", e);
+            }
+        }
+    </script>
+</body>
+</html>
