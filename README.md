@@ -10,21 +10,21 @@ An end-to-end, production-grade MLOps ecosystem designed for high-precision urba
 
 ---
 
-## 💎 Key Enterprise Features
+##  Key Enterprise Features
 
-### 🧠 1. Explainable AI (XAI) with SHAP
+###  1. Explainable AI (XAI) with SHAP
 Don't just predict numbers—understand the "why." Our engine integrates **SHAP (SHapley Additive exPlanations)** to break down exactly how much the time of day, temperature, or rainfall contributed to each specific traffic prediction.
 
-### 🛡️ 2. Anomaly Detection Guardrail
+###  2. Anomaly Detection Guardrail
 A secondary **Isolation Forest** model acts as a security guard. If a user inputs data that is statistically out-of-distribution (e.g., impossible weather for the time of day), the system flags it as an anomaly and alerts the operator.
 
-### 🏆 3. Champion vs. Challenger Registry
+###  3. Champion vs. Challenger Registry
 A strict model promotion strategy. New models (**Challengers**) must mathematically outperform the current production model (**Champion**) on an isolated test set before they are allowed to be promoted to "Production" status in the MLflow Registry.
 
-### 🏎️ 4. Automated Hyperparameter Tuning
+###  4. Automated Hyperparameter Tuning
 Integrated **Optuna** engine that runs dozens of trials to find the perfect architecture for the RandomForest ensemble, optimizing for $R^2$ score and generalization.
 
-### 📡 5. Real-time Monitoring & Dashboard
+###  5. Real-time Monitoring & Dashboard
 A high-fidelity, cyberpunk-themed dashboard featuring:
 - **Live Terminal Logs**: Real-time backend system status.
 - **Dynamic Chart.js Forecasts**: Visualizing the next 7 hours of traffic.
@@ -32,7 +32,7 @@ A high-fidelity, cyberpunk-themed dashboard featuring:
 
 ---
 
-## 🏗️ System Architecture
+##  System Architecture
 
 1.  **Data Ingestion**: A custom physics-based synthetic data generator mimics real-world traffic patterns (rush hours, weather correlations) to provide high-quality $R^2$ scores (~96%).
 2.  **Training Pipeline**: Optuna-driven hyperparameter search logged via MLflow Tracking.
@@ -42,7 +42,7 @@ A high-fidelity, cyberpunk-themed dashboard featuring:
 
 ---
 
-## 📂 Project Structure
+##  Project Structure
 
 ```text
 traffic-forecast-engine/
@@ -63,7 +63,7 @@ traffic-forecast-engine/
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### 1. Installation
 ```bash
@@ -94,7 +94,4 @@ Visit `http://localhost:8000` to interact with the engine.
 
 ---
 
-## 📜 Credits
-**Engineered by Mohak Mishra**
 
-Designed for performance, built for production.
