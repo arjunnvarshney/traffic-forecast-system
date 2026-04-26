@@ -9,6 +9,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy everything else
 COPY . .
 
+# Set UTF-8 encoding for emoji support in logs
+ENV PYTHONUTF8=1
+
+# Run the training pipeline during build so the image has a model baked in
+RUN python run_pipeline.py
+
 # Expose FastAPI port
 EXPOSE 8000
 
