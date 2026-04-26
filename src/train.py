@@ -17,6 +17,8 @@ def train_model(data_path: str, model_dir: str):
         print(f"Error: Cleaned data not found at {data_path}.")
         return
 
+    os.makedirs(model_dir, exist_ok=True)
+
     print("Loading cleaned dataset...")
     df = pd.read_csv(data_path)
     
