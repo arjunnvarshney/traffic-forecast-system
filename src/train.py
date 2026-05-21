@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import mlflow
 import mlflow.sklearn
@@ -22,7 +22,7 @@ def train_model(data_path: str, model_dir: str):
     print("Loading cleaned dataset...")
     df = pd.read_csv(data_path)
     
-    features = ['hour', 'temperature', 'rain_1h']
+    features = ['hour', 'temperature', 'rain_1h', 'day_of_week', 'is_weekend', 'hour_sin', 'hour_cos']
     target = 'traffic_volume'
     
     X = df[features]
@@ -48,19 +48,24 @@ def train_model(data_path: str, model_dir: str):
     print("Running Hyperparameter Tuning with Optuna...")
     def objective(trial):
         n_estimators = trial.suggest_int("n_estimators", 50, 300)
-        max_depth = trial.suggest_int("max_depth", 5, 30)
-        min_samples_split = trial.suggest_int("min_samples_split", 2, 10)
-        model = RandomForestRegressor(
+        max_depth = trial.suggest_int("max_depth", 3, 10)
+        learning_rate = trial.suggest_float("learning_rate", 0.01, 0.2, log=True)
+        subsample = trial.suggest_float("subsample", 0.6, 1.0)
+        colsample_bytree = trial.suggest_float("colsample_bytree", 0.6, 1.0)
+        
+        model = XGBRegressor(
             n_estimators=n_estimators, 
             max_depth=max_depth, 
-            min_samples_split=min_samples_split,
-            random_state=42
+            learning_rate=learning_rate,
+            subsample=subsample,
+            colsample_bytree=colsample_bytree,
+            random_state=42,
+            n_jobs=-1
         )
         model.fit(X_train, y_train)
         preds = model.predict(X_test)
         return np.sqrt(mean_squared_error(y_test, preds))
 
-    # FIX: Use TPESampler and increase trials
     sampler = TPESampler(seed=42)
     study = optuna.create_study(direction="minimize", sampler=sampler)
     study.optimize(objective, n_trials=50) 
@@ -74,8 +79,8 @@ def train_model(data_path: str, model_dir: str):
     with mlflow.start_run() as run:
         mlflow.log_params(best_params)
 
-        print("Training Optimized RandomForestRegressor...")
-        model = RandomForestRegressor(**best_params, random_state=42)
+        print("Training Optimized XGBRegressor...")
+        model = XGBRegressor(**best_params, random_state=42, n_jobs=-1)
         model.fit(X_train, y_train)
 
         predictions = model.predict(X_test)
@@ -98,13 +103,13 @@ def train_model(data_path: str, model_dir: str):
         print("Registering model in MLflow...")
         mlflow.sklearn.log_model(
             sk_model=model,
-            artifact_path="random_forest_model",
+            artifact_path="random_forest_model", # Keep path name compatible
             signature=signature,
             registered_model_name="TrafficVolumePredictor"
         )
         
         os.makedirs(model_dir, exist_ok=True)
-        model_path = os.path.join(model_dir, "rf_model.pkl")
+        model_path = os.path.join(model_dir, "rf_model.pkl") # Keep file name compatible
         joblib.dump(model, model_path)
         print(f"Model successfully saved locally at {model_path}")
 

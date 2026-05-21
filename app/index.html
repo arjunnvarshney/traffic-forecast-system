@@ -323,14 +323,26 @@
         <div class="control-panel">
             <h2>Simulation Parameters</h2>
             <div class="presets-row">
-                <button type="button" class="btn-preset" onclick="applyPreset(18, 295, 0)">[Rush Hour]</button>
-                <button type="button" class="btn-preset" onclick="applyPreset(3, 280, 0)">[Midnight Empty]</button>
-                <button type="button" class="btn-preset" onclick="applyPreset(14, 305, 50)">[Heavy Storm]</button>
+                <button type="button" class="btn-preset" onclick="applyPreset(18, 295, 0, 0)">[Rush Hour]</button>
+                <button type="button" class="btn-preset" onclick="applyPreset(3, 280, 0, 6)">[Midnight Empty]</button>
+                <button type="button" class="btn-preset" onclick="applyPreset(14, 305, 50, 4)">[Heavy Storm]</button>
             </div>
             <form id="predictForm">
                 <div class="form-group">
                     <label>Hour of Day (0-23)</label>
                     <input type="number" id="hour" class="form-control" value="17" min="0" max="23" required>
+                </div>
+                <div class="form-group">
+                    <label>Day of Week</label>
+                    <select id="dayOfWeek" class="form-control" required style="background: rgba(0,0,0,0.5); color: white; border: 1px solid var(--border); border-radius: 8px; width: 100%; padding: 12px 16px;">
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Temperature (Kelvin/Celsius)</label>
@@ -449,11 +461,12 @@
             term.scrollTop = term.scrollHeight;
         }
 
-        function applyPreset(h, t, r) {
+        function applyPreset(h, t, r, d=0) {
             document.getElementById('hour').value = h;
             document.getElementById('temperature').value = t;
             document.getElementById('rain').value = r;
-            logToTerminal(`Applied Scenario Preset: Hour=${h}, Temp=${t}, Rain=${r}`);
+            document.getElementById('dayOfWeek').value = d;
+            logToTerminal(`Applied Scenario Preset: Hour=${h}, Temp=${t}, Rain=${r}, DayOfWeek=${d}`);
         }
         
         let lastForecastData = [];
@@ -462,15 +475,19 @@
         function exportCSV() {
             if(!currentPrediction.hour && currentPrediction.hour !== 0) return;
             let csvContent = "data:text/csv;charset=utf-8,";
-            csvContent += "Type,Hour,Temperature(K),Rainfall(mm),Predicted_Volume\n";
+            csvContent += "Type,Hour,Temperature(K),Rainfall(mm),Day_of_Week,Predicted_Volume\n";
             
             // Current
-            csvContent += `Current,${currentPrediction.hour},${currentPrediction.temp},${currentPrediction.rain},${currentPrediction.vol}\n`;
+            csvContent += `Current,${currentPrediction.hour},${currentPrediction.temp},${currentPrediction.rain},${currentPrediction.dayOfWeek},${currentPrediction.vol}\n`;
             
             // Forecasts
             lastForecastData.forEach((vol, idx) => {
                 let fh = (currentPrediction.hour + idx + 1) % 24;
-                csvContent += `Forecast (+${idx+1}h),${fh},${currentPrediction.temp},${currentPrediction.rain},${vol}\n`;
+                let fd = currentPrediction.dayOfWeek;
+                if (currentPrediction.hour + idx + 1 >= 24) {
+                    fd = (fd + 1) % 7;
+                }
+                csvContent += `Forecast (+${idx+1}h),${fh},${currentPrediction.temp},${currentPrediction.rain},${fd},${vol}\n`;
             });
 
             const encodedUri = encodeURI(csvContent);
@@ -494,6 +511,7 @@
             const hour = parseInt(document.getElementById('hour').value);
             const temp = parseFloat(document.getElementById('temperature').value);
             const rain = parseFloat(document.getElementById('rain').value);
+            const dayOfWeek = parseInt(document.getElementById('dayOfWeek').value);
             
             btn.innerText = "PROCESSING DATA...";
             scanner.style.display = 'block';
@@ -505,8 +523,8 @@
             document.getElementById('confWrapper').style.opacity = '0';
             document.getElementById('btnExport').style.display = 'none';
 
-            logToTerminal(`Received Inference Request: Hour=${hour}, Temp=${temp}, Rain=${rain}`);
-            logToTerminal(`Executing RandomForestRegressor pipeline...`);
+            logToTerminal(`Received Inference Request: Hour=${hour}, Temp=${temp}, Rain=${rain}, DayOfWeek=${dayOfWeek}`);
+            logToTerminal(`Executing XGBRegressor pipeline...`);
 
             const startTime = performance.now();
 
@@ -515,7 +533,7 @@
                 const response = await fetch('/predict', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ hour: hour, temperature: temp, rain: rain })
+                    body: JSON.stringify({ hour: hour, temperature: temp, rain: rain, day_of_week: dayOfWeek })
                 });
                 
                 const data = await response.json();
@@ -559,7 +577,7 @@
                     }
 
                     // Save for CSV Export
-                    currentPrediction = { hour: hour, temp: temp, rain: rain, vol: predVol };
+                    currentPrediction = { hour: hour, temp: temp, rain: rain, dayOfWeek: dayOfWeek, vol: predVol };
 
                     logToTerminal(`Prediction Output: ${predVol} vehicles/hour`, false);
                     logToTerminal(`Extracting SHAP values from TreeExplainer...`, false);
@@ -578,12 +596,14 @@
                         
                         // Generate Natural Language Insight
                         let insight = "";
+                        const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+                        const dayName = days[dayOfWeek];
                         if (h_shap < -40) {
-                            insight += `At ${hour}:00, traffic is significantly lower than average because it is an off-peak or late-night hour. `;
+                            insight += `On ${dayName} at ${hour}:00, traffic is significantly lower than average because it is an off-peak or late-night hour. `;
                         } else if (h_shap > 40) {
-                            insight += `Traffic is surging because ${hour}:00 is a busy rush-hour or peak commuting time. `;
+                            insight += `Traffic is surging because ${hour}:00 on ${dayName} is a busy commute time. `;
                         } else {
-                            insight += `The time of day (${hour}:00) is having a normal, moderate effect on traffic. `;
+                            insight += `The time of day (${hour}:00) and day (${dayName}) are having a normal, moderate effect on traffic. `;
                         }
 
                         if (rain > 0) {
@@ -629,14 +649,19 @@
         async function generateTrend(baseHour, temp, rain) {
             let promises = [];
             let labels = [];
+            const dayOfWeek = parseInt(document.getElementById('dayOfWeek').value);
             for(let i=1; i<=7; i++) {
                 let futureHour = (baseHour + i) % 24;
+                let futureDay = dayOfWeek;
+                if (baseHour + i >= 24) {
+                    futureDay = (dayOfWeek + 1) % 7;
+                }
                 labels.push(`${futureHour}:00`);
                 promises.push(
                     fetch('/predict', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ hour: futureHour, temperature: temp, rain: rain })
+                        body: JSON.stringify({ hour: futureHour, temperature: temp, rain: rain, day_of_week: futureDay })
                     }).then(res => res.json())
                 );
             }

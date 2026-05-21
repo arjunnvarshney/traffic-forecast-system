@@ -12,3 +12,4 @@ optuna
 shap
 matplotlib
 psutil
+xgboost

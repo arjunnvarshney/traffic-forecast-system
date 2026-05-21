@@ -12,13 +12,13 @@ def detect_drift(reference_data_path, current_data_path):
     ref_df = pd.read_csv(reference_data_path)
     cur_df = pd.read_csv(current_data_path)
 
-    features = ['hour', 'temperature', 'rain_1h']
+    features = ['hour', 'temperature', 'rain_1h', 'day_of_week', 'is_weekend', 'hour_sin', 'hour_cos']
     drift_detected = False
 
     for feature in features:
         if feature in ref_df.columns and feature in cur_df.columns:
-            # Skip cyclic features like hour for drift test as daily variations are normal
-            if feature == 'hour':
+            # Skip cyclic / temporal features as their variations are normal and expected
+            if feature in ['hour', 'day_of_week', 'is_weekend', 'hour_sin', 'hour_cos']:
                 continue
                 
             # Kolmogorov-Smirnov test to compare distributions

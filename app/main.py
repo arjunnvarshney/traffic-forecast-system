@@ -16,6 +16,7 @@ class TrafficInput(BaseModel):
     hour: int = Field(..., ge=0, le=23, description="Hour of the day (0-23)")
     temperature: float = Field(..., ge=-50, description="Temperature in Kelvin or Celsius")
     rain: float = Field(..., ge=0, description="Amount of rain in mm")
+    day_of_week: int = Field(0, ge=0, le=6, description="Day of the week (0=Monday, 6=Sunday)")
 
 model = None
 explainer = None
@@ -69,10 +70,18 @@ def predict_traffic(data: TrafficInput):
     if model is None:
         raise HTTPException(status_code=503, detail="Model is not loaded.")
     
+    is_weekend = 1 if data.day_of_week >= 5 else 0
+    hour_sin = np.sin(2 * np.pi * data.hour / 24)
+    hour_cos = np.cos(2 * np.pi * data.hour / 24)
+
     input_df = pd.DataFrame([{
         "hour": data.hour,
         "temperature": data.temperature,
-        "rain_1h": data.rain
+        "rain_1h": data.rain,
+        "day_of_week": data.day_of_week,
+        "is_weekend": is_weekend,
+        "hour_sin": hour_sin,
+        "hour_cos": hour_cos
     }])
 
     try:
@@ -86,9 +95,14 @@ def predict_traffic(data: TrafficInput):
                 base_val = explainer.expected_value
                 if isinstance(base_val, np.ndarray):
                     base_val = base_val[0]
-                    
+                
+                # Index mapping:
+                # 0: hour, 1: temperature, 2: rain_1h, 3: day_of_week, 4: is_weekend, 5: hour_sin, 6: hour_cos
+                # Aggregate temporal features into hour_contribution for UI compatibility
+                time_contrib = shap_vals[0] + shap_vals[3] + shap_vals[4] + shap_vals[5] + shap_vals[6]
+                
                 explanation = {
-                    "hour_contribution": round(float(shap_vals[0]), 2),
+                    "hour_contribution": round(float(time_contrib), 2),
                     "temperature_contribution": round(float(shap_vals[1]), 2),
                     "rain_contribution": round(float(shap_vals[2]), 2),
                     "base_value": round(float(base_val), 2)
@@ -96,17 +110,29 @@ def predict_traffic(data: TrafficInput):
             except Exception as e:
                 print(f"SHAP Error during prediction: {e}")
 
-        # Confidence Score Calculation (Variance of trees)
+        # Confidence Score Calculation
         confidence_score = 95.0
         if hasattr(model, 'estimators_'):
             try:
-                # Get prediction from each individual tree
+                # Get prediction from each individual tree (RandomForest fallback)
                 tree_preds = [est.predict(input_df.values)[0] for est in model.estimators_]
                 std_dev = float(np.std(tree_preds))
-                # Map std_dev to a 0-100 score. 
                 confidence_score = max(20.0, min(99.9, 100.0 - (std_dev / 15.0)))
             except Exception as e:
                 print(f"Confidence calc error: {e}")
+        elif hasattr(model, 'get_booster'):
+            try:
+                # XGBoost specific confidence calculation:
+                # Predict using standard deviation of predictions of subsets of estimators
+                preds_stages = []
+                for i in range(1, 6):
+                    limit = max(1, int(model.n_estimators * (i / 5.0)))
+                    preds_stages.append(model.predict(input_df, iteration_range=(0, limit))[0])
+                std_dev = float(np.std(preds_stages))
+                confidence_score = max(20.0, min(99.9, 100.0 - (std_dev / 15.0)))
+            except Exception as e:
+                print(f"XGBoost confidence calc error: {e}")
+                confidence_score = 95.0
 
         # Anomaly Detection
         is_anomaly = False
@@ -124,9 +150,10 @@ def predict_traffic(data: TrafficInput):
             "input": {
                 "hour": data.hour,
                 "temperature": data.temperature,
-                "rain": data.rain
+                "rain": data.rain,
+                "day_of_week": data.day_of_week
             },
-            "predicted_traffic_volume": round(prediction, 2),
+            "predicted_traffic_volume": round(float(prediction), 2),
             "explanation": explanation,
             "is_anomaly": is_anomaly,
             "confidence_score": round(confidence_score, 2)
